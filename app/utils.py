@@ -266,11 +266,16 @@ def extract_invoice(file_path: str, content_type: str) -> dict[str, Any]:
 
     items_total = sum(i.get("line_amount", 0) or 0 for i in items)
     items_gst_total = sum(i.get("gst_amount", 0) or 0 for i in items)
+    doc_gst = raw.get("gst_amount", 0) or 0
     total = raw.get("invoice_total_amount", 0) or 0
-    # Line amounts on Australian invoices are typically ex-GST; accept either match
+    # Line amounts on Australian invoices are typically ex-GST; accept any of:
+    # 1. lines already GST-inclusive
+    # 2. lines ex-GST + per-line GST totals
+    # 3. lines ex-GST + document-level GST (model may only extract GST at header level)
     items_match = (
         abs(items_total - total) < 0.05
         or abs(items_total + items_gst_total - total) < 0.05
+        or abs(items_total + doc_gst - total) < 0.05
     )
     if items and not items_match:
         warnings.append(
