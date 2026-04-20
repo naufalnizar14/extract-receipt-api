@@ -113,7 +113,7 @@ def _strip_payment_lines(items: list) -> tuple[list, list]:
 
 def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
     """
-    Run GPT-4.1-mini extraction on a receipt, then validate and normalise the result.
+    Run GPT-4o extraction on a receipt, then validate and normalise the result.
     Returns a dict ready to be unpacked into ReceiptResponse.
     """
     system_prompt, schema_name, schema = DOC_TYPE_CONFIG["receipt"]
@@ -222,9 +222,30 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
 
     items = _resolve_line_gst(items, raw.get("gst_amount"), raw.get("gst_summary"))
 
+    # --- Reconciliation fallback ---
+    # If the model missed items (items + surcharge < tx_total by more than $0.05),
+    # append a placeholder so the total always balances. The app can prompt the user
+    # to review and split it into the actual missing items.
+    surcharge = raw.get("surcharge_amount") or 0
+    items_total = sum(i.get("line_amount", 0) or 0 for i in items)
+    gap = round(tx_total - surcharge - items_total, 2)
+    if gap > 0.05:
+        items.append({
+            "line_number": len(items) + 1,
+            "line_description": "Unrecognised items — please review",
+            "quantity": None,
+            "unit_price": None,
+            "line_amount": gap,
+            "gst_code": None,
+            "gst_amount": None,
+            "gst_exempt": False,
+            "item_category": "general_retail",
+            "notes": f"Auto-generated: ${gap:.2f} unaccounted. Check receipt for missed items.",
+        })
+        logger.warning(f"Reconciliation item added: ${gap:.2f} gap between items and transaction total")
+
     # --- Validation ---
     items_total = sum(i.get("line_amount", 0) or 0 for i in items)
-    surcharge = raw.get("surcharge_amount") or 0
     # tx_total was already resolved above (taxable_gross / line sum / raw_tx) — do not overwrite
     # Surcharge is not a purchased item so add it back before comparing
     items_match = abs(items_total + surcharge - tx_total) < 0.05
@@ -280,7 +301,7 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
 
 
 def extract_invoice(file_path: str, content_type: str) -> dict[str, Any]:
-    """Run GPT-4.1-mini extraction on an invoice with full field capture."""
+    """Run GPT-4o extraction on an invoice with full field capture."""
     system_prompt, schema_name, schema = DOC_TYPE_CONFIG["invoice"]
     raw = extract_document(file_path, content_type, schema_name, schema, system_prompt)
 

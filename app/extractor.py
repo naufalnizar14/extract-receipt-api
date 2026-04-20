@@ -1,5 +1,5 @@
 """
-Azure OpenAI GPT-4.1-mini document extractor.
+Azure OpenAI document extractor.
 Reusable for any document type — swap the prompt and schema, same client.
 """
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://arth-gpt-4o-mini.openai.azure.com")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1")
 client = AzureOpenAI(
     azure_endpoint=AZURE_OPENAI_ENDPOINT,
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -63,8 +63,7 @@ def _file_to_image_blocks(file_path: str, content_type: str) -> list[dict]:
         doc = fitz.open(file_path)
         blocks = []
         for page_num, page in enumerate(doc):
-            # 150 DPI is sufficient for text extraction, keeps token count low
-            pix = page.get_pixmap(dpi=150)
+            pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes("jpeg")
             blocks.append(_image_to_block(img_bytes, "image/jpeg"))
             logger.info(f"PDF page {page_num + 1}/{len(doc)} converted to image")
@@ -87,7 +86,7 @@ def extract_document(
     system_prompt: str,
 ) -> dict[str, Any]:
     """
-    Extract structured data from any document using GPT-4.1-mini vision.
+    Extract structured data from any document using Azure OpenAI vision.
 
     Args:
         file_path: Path to the uploaded file
@@ -123,7 +122,7 @@ def extract_document(
                 ],
             },
         ],
-        max_tokens=2048,
+        max_tokens=4096,
     )
 
     usage = response.usage

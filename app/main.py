@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Document Extraction API",
-    description="AI-powered document extraction using Azure OpenAI GPT-4.1-mini. "
+    description="AI-powered document extraction using Azure OpenAI GPT-4.1. "
                 "Supports receipts, invoices, bank statements, and emails.",
     version="2.0.0",
 )
