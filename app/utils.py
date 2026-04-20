@@ -139,7 +139,12 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
     items, payment_lines_raw = _strip_payment_lines(raw_items)
 
     # Prefer model-extracted payment_lines; fall back to what we stripped
-    model_payment_lines = raw.get("payment_lines") or []
+    # Strip surcharge entries — the model sometimes puts surcharges in payment_lines by mistake;
+    # they are already captured in surcharge_amount and are not payment records.
+    model_payment_lines = [
+        pl for pl in (raw.get("payment_lines") or [])
+        if "surcharge" not in pl.get("description", "").lower()
+    ]
     if model_payment_lines:
         payment_lines = model_payment_lines
     else:

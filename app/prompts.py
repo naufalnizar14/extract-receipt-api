@@ -267,8 +267,10 @@ OTHER RULES
 - Extract every field you can see. Do not guess values not visible.
 - Payment method: EFTPOS, payWave, tap, Visa, Mastercard, Amex, credit, debit → "card". Cash → "cash". Default "card".
 - items: only purchased goods/services. If none visible, create one using merchant name and transaction_amount.
-- MULTI-LINE ITEMS: Some receipts print the item amount on a separate line below the description, or show weight/unit details on intermediate lines. Each dollar amount that appears without a matching description on the same line belongs to the nearest preceding product description. Do NOT skip or merge items — count the dollar amounts and match them to products carefully.
-- SURCHARGE/SERVICE FEE: Never include surcharge, service fee, or card surcharge in items. Capture it in surcharge_amount only.
+- ITEM COUNT: Count every dollar amount that appears in the item section of the receipt (before the subtotal/total line). Each amount = one item. Do NOT skip any amount and do NOT merge two amounts into one item.
+- MULTI-LINE ITEMS: Some receipts print the weight/unit line BETWEEN two separate product descriptions. When you see: "PRODUCT A / weight details / PRODUCT B  $price", that "$price" belongs to PRODUCT B, and PRODUCT A has its own price on an earlier or later line. Trace each price back to its own product — never assign one price to the wrong product.
+- OPEN/GENERIC ITEMS: Items labelled "OPEN GROCERIES", "MISC", "OPEN PLU", or similar generic names are real charge items. Extract them with their amount — do not skip them.
+- SURCHARGE/SERVICE FEE: Never put surcharge, service fee, or card surcharge in items or payment_lines. Capture it in surcharge_amount only.
 - transaction_date: YYYY-MM-DD. If not visible return null.
 - transaction_time: HH:MM. If not visible return null.
 - surcharge_amount: card surcharge, service fee. Labels: "Surcharge", "Card Surcharge", "Service Fee", "Credit Card Fee". Null if absent.
