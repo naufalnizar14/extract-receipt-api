@@ -119,6 +119,17 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
     system_prompt, schema_name, schema = DOC_TYPE_CONFIG["receipt"]
 
     raw = extract_document(file_path, content_type, schema_name, schema, system_prompt)
+
+    if not raw.get("document_type_verified", True):
+        detected = raw.get("detected_document_type", "unknown")
+        return {
+            "success": False,
+            "error": (
+                f"Document does not appear to be a receipt or tax invoice. "
+                f"Detected: '{detected}'. Please re-upload using the correct document type."
+            ),
+        }
+
     logger.info(f"Raw extraction: merchant={raw.get('merchant_name')}, total={raw.get('transaction_amount')}")
 
     # --- Separate payment lines from charge items ---
@@ -248,6 +259,16 @@ def extract_invoice(file_path: str, content_type: str) -> dict[str, Any]:
     system_prompt, schema_name, schema = DOC_TYPE_CONFIG["invoice"]
     raw = extract_document(file_path, content_type, schema_name, schema, system_prompt)
 
+    if not raw.get("document_type_verified", True):
+        detected = raw.get("detected_document_type", "unknown")
+        return {
+            "success": False,
+            "error": (
+                f"Document does not appear to be an invoice. "
+                f"Detected: '{detected}'. Please re-upload using the correct document type."
+            ),
+        }
+
     logger.info(
         f"Invoice extracted — vendor={raw.get('vendor_name')}, "
         f"total={raw.get('invoice_total_amount')}, items={len(raw.get('items', []))}"
@@ -298,6 +319,16 @@ def extract_email(file_path: str, content_type: str) -> dict[str, Any]:
     system_prompt, schema_name, schema = DOC_TYPE_CONFIG["email"]
     raw = extract_document(file_path, content_type, schema_name, schema, system_prompt)
 
+    if not raw.get("document_type_verified", True):
+        detected = raw.get("detected_document_type", "unknown")
+        return {
+            "success": False,
+            "error": (
+                f"Document does not appear to be an email. "
+                f"Detected: '{detected}'. Please re-upload using the correct document type."
+            ),
+        }
+
     logger.info(
         f"Email extracted — category={raw.get('category')}, "
         f"priority={raw.get('priority')}, requires_action={raw.get('requires_action')}"
@@ -323,6 +354,16 @@ def extract_any_document(file_path: str, content_type: str, document_type: str) 
 
     system_prompt, schema_name, schema = DOC_TYPE_CONFIG[document_type]
     data = extract_document(file_path, content_type, schema_name, schema, system_prompt)
+
+    if not data.get("document_type_verified", True):
+        detected = data.get("detected_document_type", "unknown")
+        return {
+            "success": False,
+            "error": (
+                f"Document does not appear to be a {document_type}. "
+                f"Detected: '{detected}'. Please re-upload using the correct document type."
+            ),
+        }
 
     warnings = []
     confidence = data.get("confidence", 1.0) or 1.0

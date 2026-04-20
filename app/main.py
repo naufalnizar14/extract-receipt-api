@@ -126,6 +126,12 @@ async def extract(
 
         else:
             result = extract_any_document(temp_path, file.content_type, document_type)
+            if not result["success"]:
+                return JSONResponse(content={
+                    "success": False,
+                    "document_type": document_type,
+                    "error": result.get("error", "Extraction failed"),
+                })
             return JSONResponse(content={
                 "success": True,
                 "document_type": document_type,

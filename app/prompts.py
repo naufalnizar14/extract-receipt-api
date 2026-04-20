@@ -143,6 +143,13 @@ Examples:
 - "Woolworths groceries" → item_category: fresh_food_market, gst_exempt: true (if basic food)
 """
 
+# Detected document type enum — shared across all schemas
+_DOCUMENT_TYPE_DETECTED = [
+    "receipt", "hotel_folio", "tax_invoice",
+    "invoice", "bank_statement", "credit_card_statement",
+    "email", "purchase_order", "contract", "other",
+]
+
 # Shared line item schema used by receipt and invoice
 # category_group is at DOCUMENT level — line items use item_category (granular) only
 _LINE_ITEM_SCHEMA = {
@@ -215,6 +222,14 @@ The sum of all G-line gst_amounts must equal gst_summary.gst_total.
 The document-level gst_amount must equal gst_summary.gst_total.
 
 ═══════════════════════════════════════════
+DOCUMENT TYPE VERIFICATION
+═══════════════════════════════════════════
+Set document_type_verified to true ONLY if this document is a receipt, hotel folio, or tax invoice
+(i.e. a proof-of-purchase or charge document from a merchant/vendor).
+Set it to false if the document is a bank statement, email, standalone purchase order, contract, or anything else.
+Set detected_document_type to what you believe the document actually is.
+
+═══════════════════════════════════════════
 DOCUMENT TYPE DETECTION
 ═══════════════════════════════════════════
 Set document_subtype to one of:
@@ -266,6 +281,7 @@ OTHER RULES
 RECEIPT_SCHEMA = {
     "type": "object",
     "required": [
+        "document_type_verified", "detected_document_type",
         "document_subtype",
         "merchant_name", "merchant_abn", "merchant_address", "merchant_phone",
         "category_group",
@@ -276,6 +292,8 @@ RECEIPT_SCHEMA = {
     ],
     "additionalProperties": False,
     "properties": {
+        "document_type_verified":  {"type": "boolean"},
+        "detected_document_type":  {"type": "string", "enum": _DOCUMENT_TYPE_DETECTED},
         "document_subtype":   {"type": "string", "enum": ["receipt", "hotel_folio", "tax_invoice", "statement"]},
         "merchant_name":      {"type": "string"},
         "category_group":     {"type": "string", "enum": _CATEGORY_GROUPS},
@@ -366,12 +384,20 @@ RULES:
 - confidence: 0.0–1.0 reflecting overall extraction clarity.
 - Return null for any field not found — never fabricate data.
 
+DOCUMENT TYPE VERIFICATION:
+Set document_type_verified to true ONLY if this document is a formal invoice or tax invoice
+(issued by a vendor/supplier, requesting payment, with an invoice number).
+Set it to false for receipts, bank statements, emails, purchase orders, contracts, or anything else.
+Set detected_document_type to what you believe the document actually is.
+
 {_CATEGORY_INSTRUCTIONS}
 """
 
 INVOICE_SCHEMA = {
     "type": "object",
     "required": [
+        # Document type verification
+        "document_type_verified", "detected_document_type",
         # Document-level category
         "category_group",
         # Vendor
@@ -398,6 +424,9 @@ INVOICE_SCHEMA = {
     ],
     "additionalProperties": False,
     "properties": {
+        # Document type verification
+        "document_type_verified":  {"type": "boolean"},
+        "detected_document_type":  {"type": "string", "enum": _DOCUMENT_TYPE_DETECTED},
         # Document-level category
         "category_group":       {"type": "string", "enum": _CATEGORY_GROUPS},
         # Vendor
@@ -453,6 +482,12 @@ INVOICE_SCHEMA = {
 STATEMENT_SYSTEM = f"""
 You are an expert bank and credit card statement parser for Australian businesses.
 
+DOCUMENT TYPE VERIFICATION:
+Set document_type_verified to true ONLY if this document is a bank statement or credit card statement
+(periodic account statement from a financial institution listing transactions).
+Set it to false for invoices, receipts, emails, or anything else.
+Set detected_document_type to what you believe the document actually is.
+
 Rules:
 - Extract every transaction line visible on the statement.
 - type: "debit" for money going out, "credit" for money coming in.
@@ -479,6 +514,7 @@ Examples:
 STATEMENT_SCHEMA = {
     "type": "object",
     "required": [
+        "document_type_verified", "detected_document_type",
         "account_holder", "bank_name", "account_number", "account_type",
         "statement_period_start", "statement_period_end",
         "opening_balance", "closing_balance", "total_debits", "total_credits",
@@ -486,6 +522,8 @@ STATEMENT_SCHEMA = {
     ],
     "additionalProperties": False,
     "properties": {
+        "document_type_verified":  {"type": "boolean"},
+        "detected_document_type":  {"type": "string", "enum": _DOCUMENT_TYPE_DETECTED},
         "account_holder":         {"type": "string"},
         "bank_name":              {"type": ["string", "null"]},
         "account_number":         {"type": ["string", "null"]},
@@ -559,6 +597,11 @@ PRIORITY — assign based on urgency and financial impact:
 
 ATTACHMENTS — list every attachment mentioned or implied in the email. Infer the likely type from filename and context.
 
+DOCUMENT TYPE VERIFICATION:
+Set document_type_verified to true ONLY if this document is an email or email thread.
+Set it to false for invoices, receipts, bank statements, or any non-email document.
+Set detected_document_type to what you believe the document actually is.
+
 RULES:
 - All dates: YYYY-MM-DD format.
 - All amounts: positive numbers.
@@ -571,6 +614,7 @@ RULES:
 EMAIL_SCHEMA = {
     "type": "object",
     "required": [
+        "document_type_verified", "detected_document_type",
         "email_subject", "sender_name", "sender_email", "date_sent",
         "to_recipients", "cc_recipients",
         "category", "summary", "priority",
@@ -582,6 +626,8 @@ EMAIL_SCHEMA = {
     ],
     "additionalProperties": False,
     "properties": {
+        "document_type_verified":  {"type": "boolean"},
+        "detected_document_type":  {"type": "string", "enum": _DOCUMENT_TYPE_DETECTED},
         "email_subject":   {"type": ["string", "null"]},
         "sender_name":     {"type": ["string", "null"]},
         "sender_email":    {"type": ["string", "null"]},
