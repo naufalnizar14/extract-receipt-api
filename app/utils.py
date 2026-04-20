@@ -155,28 +155,35 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
             })
 
     # --- Resolve correct GST-inclusive transaction_amount ---
-    # Priority 1: gst_summary.taxable_gross (authoritative GST-inclusive total)
-    # Priority 2: sum of charge line_amounts (GST-inclusive item totals)
-    # Priority 3: raw transaction_amount if it appears to already be GST-inclusive
+    # Priority 1: GST summary total = zero_rated_net + taxable_gross
+    #             (taxable_gross alone is ONLY the G/taxable portion — must add Z items)
+    #             Only override raw_tx when there is a meaningful discrepancy (>$0.05),
+    #             which indicates the model returned an ex-GST or balance-due amount.
+    # Priority 2: sum of charge line_amounts when raw_tx = 0 (balance-due folios)
+    # Priority 3: raw_tx + doc-level gst when raw_tx looks ex-GST
+    # Priority 4: trust raw_tx as-is
     gst_summary = raw.get("gst_summary") or {}
     taxable_gross = gst_summary.get("taxable_gross")
+    zero_rated_net = gst_summary.get("zero_rated_net") or 0
     raw_tx = raw.get("transaction_amount") or 0
     gst_amount_doc = raw.get("gst_amount") or 0
 
-    if taxable_gross and taxable_gross > 0:
-        # Use gst_summary.taxable_gross — most reliable GST-inclusive total
-        tx_total = round(taxable_gross, 2)
-        if abs(raw_tx - tx_total) > 0.05:
-            logger.info(
-                f"transaction_amount corrected from ${raw_tx:.2f} (ex-GST) "
-                f"to ${tx_total:.2f} (GST-inclusive) using gst_summary.taxable_gross"
-            )
+    # Summary total = GST-free items + GST-inclusive taxable items
+    summary_total = round(zero_rated_net + taxable_gross, 2) if taxable_gross is not None else None
+
+    if summary_total and summary_total > 0 and abs(raw_tx - summary_total) > 0.05:
+        # raw_tx differs from the summary total — trust the summary (e.g. model returned ex-GST)
+        tx_total = summary_total
+        logger.info(
+            f"transaction_amount corrected from ${raw_tx:.2f} "
+            f"to ${tx_total:.2f} using gst_summary (zero_rated=${zero_rated_net:.2f} + taxable_gross=${taxable_gross:.2f})"
+        )
     elif raw_tx == 0 and items:
         # Balance-due folio — recalculate from charge lines
         tx_total = round(sum(i.get("line_amount", 0) or 0 for i in items), 2)
         logger.info(f"transaction_amount was 0 — recalculated from charge lines: ${tx_total:.2f}")
     elif abs(raw_tx + gst_amount_doc - round(sum(i.get("line_amount", 0) or 0 for i in items), 2)) < 0.05:
-        # raw_tx looks like ex-GST (raw_tx + gst = items total) — correct it
+        # raw_tx looks like ex-GST (raw_tx + gst ≈ items total) — correct it
         tx_total = round(raw_tx + gst_amount_doc, 2)
         logger.info(f"transaction_amount was ex-GST ${raw_tx:.2f} — corrected to ${tx_total:.2f}")
     else:
