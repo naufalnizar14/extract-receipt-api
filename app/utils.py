@@ -208,8 +208,10 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
 
     # --- Validation ---
     items_total = sum(i.get("line_amount", 0) or 0 for i in items)
+    surcharge = raw.get("surcharge_amount") or 0
     # tx_total was already resolved above (taxable_gross / line sum / raw_tx) — do not overwrite
-    items_match = abs(items_total - tx_total) < 0.05
+    # Surcharge is not a purchased item so add it back before comparing
+    items_match = abs(items_total + surcharge - tx_total) < 0.05
 
     # --- Date fallback ---
     transaction_date = raw.get("transaction_date")
@@ -244,7 +246,7 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
         "receipt_status":     2,
         "is_manually_entered": False,
         "items_total_matches": items_match,
-        "items_total_difference": round(tx_total - items_total, 2) if not items_match else None,
+        "items_total_difference": round(tx_total - surcharge - items_total, 2) if not items_match else None,
     }
 
     warnings = _build_warnings(receipt_data, items, items_total, tx_total, items_match)

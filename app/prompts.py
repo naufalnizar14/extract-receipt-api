@@ -267,6 +267,8 @@ OTHER RULES
 - Extract every field you can see. Do not guess values not visible.
 - Payment method: EFTPOS, payWave, tap, Visa, Mastercard, Amex, credit, debit → "card". Cash → "cash". Default "card".
 - items: only purchased goods/services. If none visible, create one using merchant name and transaction_amount.
+- MULTI-LINE ITEMS: Some receipts print the item amount on a separate line below the description, or show weight/unit details on intermediate lines. Each dollar amount that appears without a matching description on the same line belongs to the nearest preceding product description. Do NOT skip or merge items — count the dollar amounts and match them to products carefully.
+- SURCHARGE/SERVICE FEE: Never include surcharge, service fee, or card surcharge in items. Capture it in surcharge_amount only.
 - transaction_date: YYYY-MM-DD. If not visible return null.
 - transaction_time: HH:MM. If not visible return null.
 - surcharge_amount: card surcharge, service fee. Labels: "Surcharge", "Card Surcharge", "Service Fee", "Credit Card Fee". Null if absent.
