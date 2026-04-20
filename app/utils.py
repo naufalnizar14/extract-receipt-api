@@ -246,9 +246,12 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
 
     # --- Validation ---
     items_total = sum(i.get("line_amount", 0) or 0 for i in items)
-    # tx_total was already resolved above (taxable_gross / line sum / raw_tx) — do not overwrite
-    # Surcharge is not a purchased item so add it back before comparing
-    items_match = abs(items_total + surcharge - tx_total) < 0.05
+    # tx_total may or may not include the surcharge depending on how the merchant prints the receipt.
+    # Accept either: items == tx_total (surcharge separate) OR items + surcharge == tx_total
+    items_match = (
+        abs(items_total - tx_total) < 0.05
+        or abs(items_total + surcharge - tx_total) < 0.05
+    )
 
     # --- Date fallback ---
     transaction_date = raw.get("transaction_date")
@@ -283,7 +286,7 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
         "receipt_status":     2,
         "is_manually_entered": False,
         "items_total_matches": items_match,
-        "items_total_difference": round(tx_total - surcharge - items_total, 2) if not items_match else None,
+        "items_total_difference": round(tx_total - items_total, 2) if not items_match else None,
     }
 
     warnings = _build_warnings(receipt_data, items, items_total, tx_total, items_match, surcharge)
@@ -427,13 +430,8 @@ def _build_warnings(receipt_data, items, items_total, tx_total, items_match, sur
     warnings = []
 
     if not items_match:
-        items_plus_surcharge = items_total + surcharge
-        expected = tx_total
-        detail = f"${items_total:.2f} items"
-        if surcharge:
-            detail += f" + ${surcharge:.2f} surcharge = ${items_plus_surcharge:.2f}"
         warnings.append(
-            f"Line items total ({detail}) does not match transaction amount (${expected:.2f})"
+            f"Line items total (${items_total:.2f}) does not match transaction amount (${tx_total:.2f})"
         )
     if receipt_data["ocr_confidence"] < 0.8:
         warnings.append(f"Low extraction confidence: {receipt_data['ocr_confidence'] * 100:.0f}%")
