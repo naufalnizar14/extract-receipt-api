@@ -28,7 +28,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
+        uses: azure/webapps-deploy@v3.1.0
         with:
           app-name: extract-receipt-api
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C0CE01266AF641F19AEF10E705C2BBA4 }}
