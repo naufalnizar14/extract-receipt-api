@@ -168,16 +168,27 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
     raw_tx = raw.get("transaction_amount") or 0
     gst_amount_doc = raw.get("gst_amount") or 0
 
-    # Summary total = GST-free items + GST-inclusive taxable items
+    surcharge_raw = raw.get("surcharge_amount") or 0
+
+    # Summary total = GST-free items + GST-inclusive taxable items (never includes surcharge)
     summary_total = round(zero_rated_net + taxable_gross, 2) if taxable_gross is not None else None
 
-    if summary_total and summary_total > 0 and abs(raw_tx - summary_total) > 0.05:
-        # raw_tx differs from the summary total — trust the summary (e.g. model returned ex-GST)
-        tx_total = summary_total
-        logger.info(
-            f"transaction_amount corrected from ${raw_tx:.2f} "
-            f"to ${tx_total:.2f} using gst_summary (zero_rated=${zero_rated_net:.2f} + taxable_gross=${taxable_gross:.2f})"
-        )
+    if summary_total and summary_total > 0:
+        diff = abs(raw_tx - summary_total)
+        if diff <= 0.05:
+            # raw_tx already matches summary — trust it as-is
+            tx_total = raw_tx
+        elif abs(raw_tx - summary_total - surcharge_raw) <= 0.05:
+            # Difference equals the surcharge — raw_tx correctly includes surcharge, keep it
+            tx_total = raw_tx
+        else:
+            # Genuine discrepancy (e.g. model returned ex-GST) — rebuild from summary + surcharge
+            tx_total = round(summary_total + surcharge_raw, 2)
+            logger.info(
+                f"transaction_amount corrected from ${raw_tx:.2f} "
+                f"to ${tx_total:.2f} using gst_summary "
+                f"(zero_rated=${zero_rated_net:.2f} + taxable_gross=${taxable_gross:.2f} + surcharge=${surcharge_raw:.2f})"
+            )
     elif raw_tx == 0 and items:
         # Balance-due folio — recalculate from charge lines
         tx_total = round(sum(i.get("line_amount", 0) or 0 for i in items), 2)
@@ -249,7 +260,7 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
         "items_total_difference": round(tx_total - surcharge - items_total, 2) if not items_match else None,
     }
 
-    warnings = _build_warnings(receipt_data, items, items_total, tx_total, items_match)
+    warnings = _build_warnings(receipt_data, items, items_total, tx_total, items_match, surcharge)
 
     subtype = raw.get("document_subtype", "receipt")
     if subtype != "receipt":
@@ -386,12 +397,17 @@ def extract_any_document(file_path: str, content_type: str, document_type: str) 
     }
 
 
-def _build_warnings(receipt_data, items, items_total, tx_total, items_match) -> list[str]:
+def _build_warnings(receipt_data, items, items_total, tx_total, items_match, surcharge=0.0) -> list[str]:
     warnings = []
 
     if not items_match:
+        items_plus_surcharge = items_total + surcharge
+        expected = tx_total
+        detail = f"${items_total:.2f} items"
+        if surcharge:
+            detail += f" + ${surcharge:.2f} surcharge = ${items_plus_surcharge:.2f}"
         warnings.append(
-            f"Line items total (${items_total:.2f}) does not match transaction amount (${tx_total:.2f})"
+            f"Line items total ({detail}) does not match transaction amount (${expected:.2f})"
         )
     if receipt_data["ocr_confidence"] < 0.8:
         warnings.append(f"Low extraction confidence: {receipt_data['ocr_confidence'] * 100:.0f}%")
