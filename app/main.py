@@ -7,9 +7,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.extractor import AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_ENDPOINT
-from app.models import DocumentResponse, ReceiptExtraction, ReceiptResponse
+from app.models import DocumentResponse, EmailExtraction, EmailResponse, InvoiceExtraction, InvoiceResponse, ReceiptExtraction, ReceiptResponse
 from app.prompts import SUPPORTED_DOC_TYPES
-from app.utils import extract_any_document, extract_receipt
+from app.utils import extract_any_document, extract_email, extract_invoice, extract_receipt
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -102,6 +102,27 @@ async def extract(
                     validation_warnings=result.get("validation_warnings"),
                 )
             return ReceiptResponse(success=False, error=result.get("error", "Extraction failed"))
+
+        elif document_type == "invoice":
+            result = extract_invoice(temp_path, file.content_type)
+            if result["success"]:
+                return InvoiceResponse(
+                    success=True,
+                    invoice_data=InvoiceExtraction(**result["invoice_data"]),
+                    raw_data=result.get("raw_data"),
+                    validation_warnings=result.get("validation_warnings"),
+                )
+            return InvoiceResponse(success=False, error=result.get("error", "Extraction failed"))
+
+        elif document_type == "email":
+            result = extract_email(temp_path, file.content_type)
+            if result["success"]:
+                return EmailResponse(
+                    success=True,
+                    email_data=EmailExtraction(**result["email_data"]),
+                    raw_data=result.get("email_data"),
+                )
+            return EmailResponse(success=False, error=result.get("error", "Extraction failed"))
 
         else:
             result = extract_any_document(temp_path, file.content_type, document_type)
