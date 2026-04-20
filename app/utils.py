@@ -122,29 +122,54 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
     logger.info(f"Raw extraction: merchant={raw.get('merchant_name')}, total={raw.get('transaction_amount')}")
 
     # --- Separate payment lines from charge items ---
+    # The model may have already extracted payment_lines separately (preferred),
+    # or they may still be mixed into items (fallback: strip them out ourselves)
     raw_items = raw.get("items") or []
     items, payment_lines_raw = _strip_payment_lines(raw_items)
 
-    # Build structured payment_lines list
-    payment_lines = []
-    for pl in payment_lines_raw:
-        payment_lines.append({
-            "description": pl.get("line_description", "Payment"),
-            "amount": abs(pl.get("line_amount", 0) or 0),
-            "payment_method": "card" if any(
-                kw in pl.get("line_description", "").lower()
-                for kw in ["visa", "mastercard", "amex", "eftpos", "credit", "debit"]
-            ) else "cash",
-        })
+    # Prefer model-extracted payment_lines; fall back to what we stripped
+    model_payment_lines = raw.get("payment_lines") or []
+    if model_payment_lines:
+        payment_lines = model_payment_lines
+    else:
+        payment_lines = []
+        for pl in payment_lines_raw:
+            payment_lines.append({
+                "description": pl.get("line_description", "Payment"),
+                "amount": abs(pl.get("line_amount", 0) or 0),
+                "payment_method": "card" if any(
+                    kw in pl.get("line_description", "").lower()
+                    for kw in ["visa", "mastercard", "amex", "eftpos", "credit", "debit"]
+                ) else "cash",
+            })
 
-    # --- Fix transaction_amount when model returned 0 (balance due) ---
-    tx_total = raw.get("transaction_amount") or 0
-    if tx_total == 0 and items:
+    # --- Resolve correct GST-inclusive transaction_amount ---
+    # Priority 1: gst_summary.taxable_gross (authoritative GST-inclusive total)
+    # Priority 2: sum of charge line_amounts (GST-inclusive item totals)
+    # Priority 3: raw transaction_amount if it appears to already be GST-inclusive
+    gst_summary = raw.get("gst_summary") or {}
+    taxable_gross = gst_summary.get("taxable_gross")
+    raw_tx = raw.get("transaction_amount") or 0
+    gst_amount_doc = raw.get("gst_amount") or 0
+
+    if taxable_gross and taxable_gross > 0:
+        # Use gst_summary.taxable_gross — most reliable GST-inclusive total
+        tx_total = round(taxable_gross, 2)
+        if abs(raw_tx - tx_total) > 0.05:
+            logger.info(
+                f"transaction_amount corrected from ${raw_tx:.2f} (ex-GST) "
+                f"to ${tx_total:.2f} (GST-inclusive) using gst_summary.taxable_gross"
+            )
+    elif raw_tx == 0 and items:
+        # Balance-due folio — recalculate from charge lines
         tx_total = round(sum(i.get("line_amount", 0) or 0 for i in items), 2)
-        logger.info(
-            f"transaction_amount was 0 (balance due on folio) — "
-            f"recalculated from charge lines: ${tx_total:.2f}"
-        )
+        logger.info(f"transaction_amount was 0 — recalculated from charge lines: ${tx_total:.2f}")
+    elif abs(raw_tx + gst_amount_doc - round(sum(i.get("line_amount", 0) or 0 for i in items), 2)) < 0.05:
+        # raw_tx looks like ex-GST (raw_tx + gst = items total) — correct it
+        tx_total = round(raw_tx + gst_amount_doc, 2)
+        logger.info(f"transaction_amount was ex-GST ${raw_tx:.2f} — corrected to ${tx_total:.2f}")
+    else:
+        tx_total = raw_tx
 
     # --- Auto-generate single item if no charge lines found ---
     if not items:
@@ -240,8 +265,14 @@ def extract_invoice(file_path: str, content_type: str) -> dict[str, Any]:
     raw["items"] = items
 
     items_total = sum(i.get("line_amount", 0) or 0 for i in items)
+    items_gst_total = sum(i.get("gst_amount", 0) or 0 for i in items)
     total = raw.get("invoice_total_amount", 0) or 0
-    if items and abs(items_total - total) > 0.05:
+    # Line amounts on Australian invoices are typically ex-GST; accept either match
+    items_match = (
+        abs(items_total - total) < 0.05
+        or abs(items_total + items_gst_total - total) < 0.05
+    )
+    if items and not items_match:
         warnings.append(
             f"Line items total (${items_total:.2f}) does not match invoice total (${total:.2f})"
         )
