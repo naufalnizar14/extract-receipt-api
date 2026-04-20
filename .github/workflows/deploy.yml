@@ -30,6 +30,6 @@ jobs:
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: extract-receipt-api
+          app-name: extract-receipt-api-c8edesgye6gdg8a7
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C0CE01266AF641F19AEF10E705C2BBA4 }}
           package: .
