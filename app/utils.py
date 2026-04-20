@@ -201,7 +201,7 @@ def extract_receipt(file_path: str, content_type: str) -> dict[str, Any]:
 
     # --- Validation ---
     items_total = sum(i.get("line_amount", 0) or 0 for i in items)
-    tx_total = raw.get("transaction_amount", 0.0) or 0.0
+    # tx_total was already resolved above (taxable_gross / line sum / raw_tx) — do not overwrite
     items_match = abs(items_total - tx_total) < 0.05
 
     # --- Date fallback ---
